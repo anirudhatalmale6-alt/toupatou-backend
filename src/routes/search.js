@@ -6,7 +6,7 @@ const pool = require('../db/pool');
 router.get('/hotels', async (req, res) => {
   try {
     const { city, stars, checkin, checkout, guests } = req.query;
-    let query = 'SELECT h.*, o.name as operator_name, o.verified as operator_verified FROM hotels h LEFT JOIN operators o ON h.operator_id = o.id WHERE h.active = true';
+    let query = 'SELECT h.*, o.business_name as operator_name, o.verification_status as operator_verified FROM hotels h LEFT JOIN operators o ON h.operator_id = o.id WHERE h.active = true';
     const params = [];
     let idx = 1;
 
@@ -27,7 +27,7 @@ router.get('/buses', async (req, res) => {
   try {
     const { from, to, date } = req.query;
     let query = `
-      SELECT br.*, o.name as operator_name, o.verified as operator_verified
+      SELECT br.*, o.business_name as operator_name, o.verification_status as operator_verified
       FROM bus_routes br
       LEFT JOIN operators o ON br.operator_id = o.id
       WHERE br.active = true
@@ -52,7 +52,7 @@ router.get('/events', async (req, res) => {
   try {
     const { city, category, from_date } = req.query;
     let query = `
-      SELECT e.*, o.name as operator_name
+      SELECT e.*, o.business_name as operator_name
       FROM events e
       LEFT JOIN operators o ON e.operator_id = o.id
       WHERE e.active = true AND e.event_date >= NOW()
@@ -78,7 +78,7 @@ router.get('/maritime', async (req, res) => {
   try {
     const { from, to } = req.query;
     let query = `
-      SELECT mr.*, o.name as operator_name, o.verified as operator_verified
+      SELECT mr.*, o.business_name as operator_name, o.verification_status as operator_verified
       FROM maritime_routes mr
       LEFT JOIN operators o ON mr.operator_id = o.id
       WHERE mr.active = true
