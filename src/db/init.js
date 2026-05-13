@@ -5,47 +5,51 @@ async function initDatabase() {
   try {
     await client.query('BEGIN');
 
-    // Users table
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(255),
+        fullname VARCHAR(255),
         phone VARCHAR(30) NOT NULL UNIQUE,
+        whatsapp VARCHAR(30),
         email VARCHAR(255),
+        password_hash VARCHAR(255),
         pin VARCHAR(6),
-        role VARCHAR(20) DEFAULT 'user',
-        lang VARCHAR(5) DEFAULT 'ht',
+        role VARCHAR(30) DEFAULT 'user',
+        language VARCHAR(5) DEFAULT 'ht',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
 
-    // Operators table (hotels, airlines, bus companies, helicopter, maritime, concierge)
     await client.query(`
       CREATE TABLE IF NOT EXISTS operators (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        type VARCHAR(30) NOT NULL,
+        business_name VARCHAR(255) NOT NULL,
+        operator_type VARCHAR(30) NOT NULL,
+        owner_name VARCHAR(255),
         phone VARCHAR(30),
         whatsapp VARCHAR(30),
         email VARCHAR(255),
+        address TEXT,
         city VARCHAR(100),
         description TEXT,
         logo_url VARCHAR(500),
-        verified BOOLEAN DEFAULT false,
+        verification_status VARCHAR(20) DEFAULT 'pending',
         verified_at TIMESTAMPTZ,
+        documents JSONB DEFAULT '[]',
+        payout_info JSONB DEFAULT '{}',
         rating NUMERIC(2,1) DEFAULT 0,
         review_count INT DEFAULT 0,
         details JSONB DEFAULT '{}',
+        password_hash VARCHAR(255),
         active BOOLEAN DEFAULT true,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_operators_type ON operators(type)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_operators_type ON operators(operator_type)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_operators_city ON operators(city)`);
 
-    // Bus routes
     await client.query(`
       CREATE TABLE IF NOT EXISTS bus_routes (
         id SERIAL PRIMARY KEY,
@@ -67,7 +71,6 @@ async function initDatabase() {
       )
     `);
 
-    // Hotels
     await client.query(`
       CREATE TABLE IF NOT EXISTS hotels (
         id SERIAL PRIMARY KEY,
@@ -91,7 +94,6 @@ async function initDatabase() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_hotels_city ON hotels(city)`);
 
-    // Events
     await client.query(`
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
@@ -115,7 +117,6 @@ async function initDatabase() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_city ON events(city)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date)`);
 
-    // Maritime routes
     await client.query(`
       CREATE TABLE IF NOT EXISTS maritime_routes (
         id SERIAL PRIMARY KEY,
@@ -135,7 +136,6 @@ async function initDatabase() {
       )
     `);
 
-    // Reservations (central table for all booking types)
     await client.query(`
       CREATE TABLE IF NOT EXISTS reservations (
         id SERIAL PRIMARY KEY,
@@ -144,15 +144,19 @@ async function initDatabase() {
         operator_id INT REFERENCES operators(id),
         category VARCHAR(30) NOT NULL,
         status VARCHAR(20) DEFAULT 'pending',
+        payment_status VARCHAR(20) DEFAULT 'unpaid',
         booking_date TIMESTAMPTZ,
         details JSONB DEFAULT '{}',
+        route VARCHAR(255),
         passengers INT DEFAULT 1,
+        seats JSONB DEFAULT '[]',
         total_amount NUMERIC(10,2) DEFAULT 0,
         currency VARCHAR(5) DEFAULT 'HTG',
         qr_code TEXT,
         pin VARCHAR(6),
         notes TEXT,
         source VARCHAR(20) DEFAULT 'web',
+        expires_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
@@ -163,7 +167,6 @@ async function initDatabase() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_reservations_ref ON reservations(ref_code)`);
 
-    // Payments
     await client.query(`
       CREATE TABLE IF NOT EXISTS payments (
         id SERIAL PRIMARY KEY,
@@ -172,32 +175,73 @@ async function initDatabase() {
         amount NUMERIC(10,2) NOT NULL,
         currency VARCHAR(5) DEFAULT 'HTG',
         method VARCHAR(30) NOT NULL,
-        status VARCHAR(20) DEFAULT 'pending',
+        status VARCHAR(30) DEFAULT 'pending',
         reference VARCHAR(255),
         provider_ref VARCHAR(255),
+        proof_upload VARCHAR(500),
+        verified_by INT REFERENCES users(id),
         details JSONB DEFAULT '{}',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_payments_reservation ON payments(reservation_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)`);
 
-    // Support tickets
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS manifests (
+        id SERIAL PRIMARY KEY,
+        route VARCHAR(255) NOT NULL,
+        operator_id INT REFERENCES operators(id),
+        departure_time TIMESTAMPTZ NOT NULL,
+        arrival_time TIMESTAMPTZ,
+        passengers JSONB DEFAULT '[]',
+        luggage_count INT DEFAULT 0,
+        seats_total INT DEFAULT 45,
+        seats_sold INT DEFAULT 0,
+        seats_boarded INT DEFAULT 0,
+        status VARCHAR(20) DEFAULT 'scheduled',
+        driver_name VARCHAR(255),
+        driver_phone VARCHAR(30),
+        vehicle_plate VARCHAR(30),
+        checkpoints JSONB DEFAULT '[]',
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_manifests_operator ON manifests(operator_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_manifests_status ON manifests(status)`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS scan_logs (
+        id SERIAL PRIMARY KEY,
+        ref_code VARCHAR(20) NOT NULL,
+        scan_type VARCHAR(30) NOT NULL,
+        scanner_id INT REFERENCES users(id),
+        result VARCHAR(20) NOT NULL,
+        details JSONB DEFAULT '{}',
+        scanned_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_scans_ref ON scan_logs(ref_code)`);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS support_tickets (
         id SERIAL PRIMARY KEY,
         user_id INT REFERENCES users(id),
         reservation_id INT REFERENCES reservations(id),
+        category VARCHAR(50),
         subject VARCHAR(255),
         message TEXT,
         status VARCHAR(20) DEFAULT 'open',
         priority VARCHAR(20) DEFAULT 'normal',
+        assigned_to INT REFERENCES users(id),
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
 
-    // Seed some default data
     const { rows: existingOps } = await client.query('SELECT COUNT(*) FROM operators');
     if (parseInt(existingOps[0].count) === 0) {
       await seedData(client);
@@ -215,14 +259,20 @@ async function initDatabase() {
 }
 
 async function seedData(client) {
-  // Seed bus operators
+  const bcrypt = require('bcryptjs');
+  const adminHash = await bcrypt.hash('toupatou2026', 10);
+
+  await client.query(`
+    INSERT INTO users (fullname, phone, whatsapp, email, password_hash, role, language)
+    VALUES ('TouPaTou Admin', '+50941902005', '50941902005', 'admin@toupatou.com', $1, 'admin', 'ht')
+  `, [adminHash]);
+
   const { rows: [busOp] } = await client.query(`
-    INSERT INTO operators (name, type, phone, whatsapp, city, verified, description)
-    VALUES ('Caribe Tours Haiti', 'bus', '+50941902005', '50941902005', 'Port-au-Prince', true, 'Service de bus international Haiti-RD')
+    INSERT INTO operators (business_name, operator_type, phone, whatsapp, city, verification_status, description, owner_name)
+    VALUES ('Caribe Tours Haiti', 'bus', '+50941902005', '50941902005', 'Port-au-Prince', 'verified', 'Service de bus international Haiti-RD', 'Jean-Pierre Duval')
     RETURNING id
   `);
 
-  // Seed bus routes
   const busRoutes = [
     ['Port-au-Prince', 'Santo Domingo', 'PAP-SDQ', '06:00', '12:00', 2500, 45],
     ['Port-au-Prince', 'Santo Domingo', 'PAP-SDQ', '14:00', '20:00', 2500, 45],
@@ -237,16 +287,14 @@ async function seedData(client) {
     `, [busOp.id, from, to, code, dep, arr, price, seats]);
   }
 
-  // Seed helicopter operator
   await client.query(`
-    INSERT INTO operators (name, type, phone, whatsapp, city, verified, description)
-    VALUES ('Haiti Air VIP', 'helicopter', '+50941902005', '50941902005', 'Port-au-Prince', true, 'Service helicoptere VIP, medical, tourisme')
+    INSERT INTO operators (business_name, operator_type, phone, whatsapp, city, verification_status, description, owner_name)
+    VALUES ('Haiti Air VIP', 'helicopter', '+50941902005', '50941902005', 'Port-au-Prince', 'verified', 'Service helicoptere VIP, medical, tourisme', 'Marc Antoine')
   `);
 
-  // Seed hotels
-  const hotelOp = await client.query(`
-    INSERT INTO operators (name, type, phone, whatsapp, city, verified, description)
-    VALUES ('TouPaTou Hotels', 'hotel', '+50941902005', '50941902005', 'Port-au-Prince', true, 'Reseau hotels partenaires')
+  const { rows: [hotelOp] } = await client.query(`
+    INSERT INTO operators (business_name, operator_type, phone, whatsapp, city, verification_status, description, owner_name)
+    VALUES ('TouPaTou Hotels', 'hotel', '+50941902005', '50941902005', 'Port-au-Prince', 'verified', 'Reseau hotels partenaires', 'TouPaTou Team')
     RETURNING id
   `);
 
@@ -262,13 +310,12 @@ async function seedData(client) {
     await client.query(`
       INSERT INTO hotels (operator_id, name, city, stars, price_min, price_max, currency, amenities)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [hotelOp.rows[0].id, name, city, stars, min, max, cur, JSON.stringify(['wifi', 'pool', 'restaurant', 'parking'])]);
+    `, [hotelOp.id, name, city, stars, min, max, cur, JSON.stringify(['wifi', 'pool', 'restaurant', 'parking'])]);
   }
 
-  // Seed maritime operator
-  const maritimeOp = await client.query(`
-    INSERT INTO operators (name, type, phone, whatsapp, city, verified, description)
-    VALUES ('Haiti Maritime Transport', 'maritime', '+50941902005', '50941902005', 'Port-au-Prince', true, 'Transport maritime passagers et fret')
+  const { rows: [maritimeOp] } = await client.query(`
+    INSERT INTO operators (business_name, operator_type, phone, whatsapp, city, verification_status, description, owner_name)
+    VALUES ('Haiti Maritime Transport', 'maritime', '+50941902005', '50941902005', 'Port-au-Prince', 'verified', 'Transport maritime passagers et fret', 'Robert Charles')
     RETURNING id
   `);
 
@@ -282,33 +329,31 @@ async function seedData(client) {
     await client.query(`
       INSERT INTO maritime_routes (operator_id, from_port, to_port, departure_time, passenger_capacity, cargo_capacity_lbs, price_passenger, price_cargo_per_lb)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [maritimeOp.rows[0].id, from, to, dep, pax, cargo, price, priceCargo]);
+    `, [maritimeOp.id, from, to, dep, pax, cargo, price, priceCargo]);
   }
 
-  // Seed concierge operator
   await client.query(`
-    INSERT INTO operators (name, type, phone, whatsapp, city, verified, description)
-    VALUES ('TouPaTou Concierge', 'concierge', '+50941902005', '50941902005', 'Port-au-Prince', true, 'Services VIP: aeroport, chauffeur, reservations, business')
+    INSERT INTO operators (business_name, operator_type, phone, whatsapp, city, verification_status, description, owner_name)
+    VALUES ('TouPaTou Concierge', 'concierge', '+50941902005', '50941902005', 'Port-au-Prince', 'verified', 'Services VIP: aeroport, chauffeur, reservations, business', 'TouPaTou Team')
   `);
 
-  // Seed sample events
-  const eventOp = await client.query(`
-    INSERT INTO operators (name, type, phone, whatsapp, city, verified, description)
-    VALUES ('Tike Lakay Events', 'events', '+50941902005', '50941902005', 'Port-au-Prince', true, 'Evenements et packages')
+  const { rows: [eventOp] } = await client.query(`
+    INSERT INTO operators (business_name, operator_type, phone, whatsapp, city, verification_status, description, owner_name)
+    VALUES ('Tike Lakay Events', 'events', '+50941902005', '50941902005', 'Port-au-Prince', 'verified', 'Evenements et packages', 'Marie Duval')
     RETURNING id
   `);
 
   const events = [
     ['Konpa Festival 2026', 'Port-au-Prince', 'Parc Historique', '2026-07-15 20:00', 'music', 2500, 500],
     ['Haiti Jazz Festival', 'Petion-Ville', 'Hotel Montana', '2026-08-10 19:00', 'music', 5000, 300],
-    ['Fete de la Musique', 'Cap-Haitien', 'Place d\'Armes', '2026-06-21 18:00', 'culture', 1000, 1000],
+    ['Fete de la Musique', 'Cap-Haitien', "Place d'Armes", '2026-06-21 18:00', 'culture', 1000, 1000],
     ['Haiti Business Summit', 'Port-au-Prince', 'Marriott', '2026-09-05 09:00', 'business', 15000, 200],
   ];
   for (const [name, city, venue, date, cat, price, tickets] of events) {
     await client.query(`
       INSERT INTO events (operator_id, name, city, venue, event_date, category, price_htg, tickets_total)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [eventOp.rows[0].id, name, city, venue, date, cat, price, tickets]);
+    `, [eventOp.id, name, city, venue, date, cat, price, tickets]);
   }
 
   console.log('Seed data inserted successfully');
