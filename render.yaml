@@ -2,6 +2,7 @@ services:
   - type: web
     name: toupatou-backend
     runtime: node
+    plan: free
     buildCommand: npm install
     startCommand: node src/server.js
     envVars:
@@ -9,11 +10,3 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
-      - key: DATABASE_URL
-        fromDatabase:
-          name: toupatou-db
-          property: connectionString
-
-databases:
-  - name: toupatou-db
-    plan: free
