@@ -127,14 +127,21 @@ app.use((err, req, res, next) => {
 
 async function start() {
   try {
-    await initDatabase();
+    if (process.env.DATABASE_URL) {
+      await initDatabase();
+      console.log('Database connected');
+    } else {
+      console.log('No DATABASE_URL set — running in API-only mode (no database)');
+    }
     app.listen(PORT, () => {
       console.log(`TouPaTou API v2.0 running on port ${PORT}`);
       console.log(`Endpoints: http://localhost:${PORT}/api`);
     });
   } catch (err) {
-    console.error('Failed to start server:', err);
-    process.exit(1);
+    console.error('Database init failed, starting server without DB:', err.message);
+    app.listen(PORT, () => {
+      console.log(`TouPaTou API v2.0 running on port ${PORT} (no database)`);
+    });
   }
 }
 
